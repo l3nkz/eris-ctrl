@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+
+import sys
+from argparse import ArgumentParser
+
+from eris import ErisCtrl, ErisCtrlError
+
+
+logger = logging.getLogger("eris-ctrl")
+
+
+def main():
+    parser = ArgumentParser("eris-ctrl")
+
+    parser.add_argument("--url", "-u", help="The url where to find the eris interface",
+            type=str, dest="url", default="localhost")
+    parser.add_argument("--port","-p", help="The port where to find the eris interface",
+            type=int, dest="port", default=5189)
+    parser.add_argument("--user", help="The user for the eris interface",
+            type=str, dest="user", default="ctrl")
+    parser.add_argument("--passwd", help="The password for the user for the eris interface",
+            type=str, dest="passwd", default="ctrl")
+
+    parsed_args = parser.parse_args()
+
+    url = parsed_args.url
+    port = parsed_args.port
+    user = parsed_args.user
+    passwd = parsed_args.passwd
+
+    try:
+        with ErisCtrl(url, port, user, passwd) as ectrl:
+            workers = ectrl.workers()
+
+            print("Eris currently runs with {} worker(s)".format(len(workers)))
+            print("Disabling all except the first one :)")
+
+            for worker in workers[1:]:
+                worker.disable()
+
+            print("Current worker status:")
+            for worker in workers:
+                print(worker.status())
+
+            print("Enabling all again :)")
+            for worker in workers:
+                worker.enable()
+
+            benchs = ectrl.benchmarks()
+            print("Available bechmarks: " + ",".join(benchs))
+
+            print("Running first benchmark")
+            b = ectrl.benchmark_start(benchs[0])
+
+            print("Benchmark status:")
+            print(b.status())
+
+            input("Press Enter to stop the benchmark")
+            b.stop()
+
+            print("Done!")
+    except ErisCtrlError as e:
+        print("Something went wrong:\n" + str(e))
+        sys.exit(1)
+    except Exception as e:
+        print("Something really bad went wrong:\n" + str(e))
+        sys.exit(2)
+
+if __name__ == "__main__":
+    main()
