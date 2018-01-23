@@ -46,7 +46,7 @@ class ErisBenchmark:
         """
         Stop the benchmark instance.
         """
-        self._ectrl._post("/benchmarking/stop/{handle}".format(handle=self._handle), rmode=ErisCtrl.RequstMode.BOOL)
+        self._ectrl._post("/benchmarking/stop/{handle}".format(handle=self._handle), rmode=ErisCtrl.RequestMode.BOOL)
 
 
 ErisWorkerStatus = collections.namedtuple("ErisWorkerStatus", ["enabled", "suspending"])
@@ -76,7 +76,7 @@ class ErisWorker:
         @returns:       Whether the disabling was successful or not.
         @rtype:         bool
         """
-        r = self._ectrl._post("/osctrl/lpv/{}/disable".format(self._cpuid), rmode=ErisCtrl.RequstMode.RAW)
+        r = self._ectrl._post("/osctrl/lpv/{}/disable".format(self._cpuid), rmode=ErisCtrl.RequestMode.RAW)
 
         return r.status_code == 200
 
@@ -87,7 +87,7 @@ class ErisWorker:
         @returns:       Whether the enabling was successful or not.
         @rtype:         bool
         """
-        r = self._ectrl._post("/osctrl/lpv/{}/enable".format(self._cpuid), rmode=ErisCtrl.RequstMode.RAW)
+        r = self._ectrl._post("/osctrl/lpv/{}/enable".format(self._cpuid), rmode=ErisCtrl.RequestMode.RAW)
 
         return r.status_code == 200
 
@@ -128,7 +128,7 @@ class ErisCtrl:
     This class handles all the general management requests to ERIS and is also the session manager.
     """
 
-    class RequstMode(Enum):
+    class RequestMode(Enum):
         RAW = 1
         JSON = 2
         BOOL = 3
@@ -168,37 +168,46 @@ class ErisCtrl:
     def _is_logged_in(self):
         return self._session_id is not None
 
-    def _post(self, sub_url, data={}, rmode=RequstMode.JSON):
+    def _delete(self, sub_url):
+        if not self._is_logged_in():
+            raise ErisCtrlError("Not connected to ERIS")
+
+        r = self._session.delete(self._interface_url + sub_url,
+                cookies={"id" : self._session_id})
+
+        return r.status_code == 200
+
+    def _post(self, sub_url, data={}, rmode=RequestMode.JSON):
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
         r = self._session.post(self._interface_url + sub_url,
-                data=data, cookies={"id" : self._session_id})
+                json=data, cookies={"id" : self._session_id})
 
-        if rmode == ErisCtrl.RequstMode.RAW:
+        if rmode == ErisCtrl.RequestMode.RAW:
             return r
 
-        if rmode == ErisCtrl.RequstMode.JSON:
+        if rmode == ErisCtrl.RequestMode.JSON:
             if r.status_code != 200:
-                raise ErisCtrlError("Unable to make POST request to " + sub_url)
+                raise ErisCtrlError("Unable to make POST request to {}.\nResponse: {}".format(sub_url, r))
 
             return r.json()
         else:
             return r.status_code == 200
 
-    def _get(self, sub_url, data={}, rmode=RequstMode.JSON):
+    def _get(self, sub_url, data={}, rmode=RequestMode.JSON):
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
         r = self._session.get(self._interface_url + sub_url,
-                data=data, cookies={"id" : self._session_id})
+                json=data, cookies={"id" : self._session_id})
 
-        if rmode == ErisCtrl.RequstMode.RAW:
+        if rmode == ErisCtrl.RequestMode.RAW:
             return r
 
-        if rmode == ErisCtrl.RequstMode.JSON:
+        if rmode == ErisCtrl.RequestMode.JSON:
             if r.status_code != 200:
-                raise ErisCtrlError("Unable to make GET request to " + sub_url)
+                raise ErisCtrlError("Unable to make GET request to {}.\nResponse: {}".format(sub_url, r))
 
             return r.json()
         else:
