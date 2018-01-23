@@ -50,6 +50,9 @@ def main():
             benchs = ectrl.benchmarks()
             print("Available bechmarks: " + ",".join(benchs))
 
+            # Start monitoring one counter
+            ctr = ectrl.counters()[0].monitor()
+
             print("Running first benchmark")
             b = ectrl.benchmark_start(benchs[0])
 
@@ -58,6 +61,9 @@ def main():
 
             input("Press Enter to stop the benchmark")
             b.stop()
+
+            for v in ctr.values():
+                print(v)
 
             print("Done!")
     except ErisCtrlError as e:
