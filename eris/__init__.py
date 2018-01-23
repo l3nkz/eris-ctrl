@@ -4,6 +4,8 @@ import logging
 from enum import Enum
 import collections
 
+from datetime import timedelta, datetime
+
 import requests
 
 
@@ -121,6 +123,81 @@ class ErisWorker:
         return ErisWorkerStatus(data["running"], data["suspendPending"])
 
 
+class ErisCounterValue:
+    def __init__(self, value, reltime, start_time):
+        self._value = value
+        self._reltime = reltime
+        self._abstime = start_time + timedelta(milliseconds=reltime)
+
+    def __str__(self):
+        return "{}@{} (+{})".format(self._value, self._abstime, self._reltime)
+
+    @property
+    def value(self):
+        return self._value
+
+    @property
+    def reltime(self):
+        return self._reltime
+
+    @property
+    def abstime(self):
+        return self._abstime
+
+
+class ErisMonitoredCounter:
+    def __init__(self, ectrl, ectr, ctr_id):
+        self._ectrl = ectrl
+        self._ectr = ectr
+        self._ctr_id = ctr_id
+
+        self._start = datetime.now()
+        self._values = []
+
+    def _push_values(self, reltime, values):
+        for v in values:
+            if v["type"] == "int64":
+                v = int(v["value"])
+            elif v["type"] == "double" or v["type"] == "float":
+                v = float(v["value"])
+            else:
+                v = v["value"]
+
+            self._values.append(ErisCounterValue(v, int(reltime), self._start))
+
+    def values(self):
+        self._ectrl._pull_monitoring_data()
+
+        return self._values
+
+    def unmonitor(self):
+        self._ectrl._unmonitor_counter(self._ctr_id)
+
+    def clear(self):
+        self._ectrl._pull_monitoring_data()
+
+        self._values.clear()
+
+
+class ErisCounter:
+    def __init__(self, ectrl, name, description, classes):
+        self._ectrl = ectrl
+        self._name = name
+        self._description = description
+        self._classes = classes
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def description(self):
+        return self._description
+
+    def monitor(self):
+        return self._ectrl._monitor_counter(self)
+
+
 class ErisCtrl:
     """
     The control interface to ERIS.
@@ -137,10 +214,16 @@ class ErisCtrl:
         self._user = user
         self._passwd = passwd
 
-        self._interface_url = "http://{}:{}".format(url, port)
+        if url.startswith("http"):
+            self._interface_url = "{}:{}".format(url, port)
+        else:
+            self._interface_url = "http://{}:{}".format(url, port)
         self._session = requests.Session()
 
         self._session_id = None
+
+        self._monitor_session_id = None
+        self._monitored_counters = {}
 
     def __enter__(self):
         self._login()
@@ -162,8 +245,14 @@ class ErisCtrl:
         except:
             raise ErisCtrlError("Couldn't connect to ERIS -- not running?")
 
+        # Also create a monitoring session together with the login
+        self._monitor_session_id = self._post("/monitoring/sessions", data={"interval" : 1000})["id"]
+
     def _logout(self):
-        pass
+        # Delete the monitoring session
+        if self._monitor_session_id is not None:
+            self._delete("/monitoring/session/{}".format(self._monitor_session_id))
+            self._monitor_session_id = None
 
     def _is_logged_in(self):
         return self._session_id is not None
@@ -271,3 +360,74 @@ class ErisCtrl:
                 workers.append(ErisWorker(self, worker["physicalId"], socket["physicalId"]))
 
         return workers
+
+
+    # Functions for the monitoring interface of ERIS.
+    def counters(self):
+        """
+        Get the list of available monitoring counters.
+
+        @returns:       The list of all available monitoring counters for ERIS.
+        @rtype:         list(ErisCounters)
+        """
+        # Currently we hard-code the "Finished Tasks" counter
+        return [ErisCounter(self, "Finished", "Number of tasks finished.", ["Tasks"])]
+
+    def _monitor_counter(self, ectr):
+        """
+        Add a counter to the list of monitored ones.
+
+        @param ectr:    The ErisCounter instance that wraps the monitorable counter.
+        @type ectr:     ErisCounter
+        @return:        The counter wrapper that can be used to gather values.
+        @rtype:         ErisMonitoredCounter
+        """
+        post_data = {"classes" : [], "counter" : ectr.name}
+        for c in ectr._classes:
+            post_data["classes"].append({"class" : c})
+
+        data = self._post("/monitoring/session/{}/queries".format(self._monitor_session_id),
+                data=post_data)
+
+        ctr_id = data["id"]
+
+        mctr = ErisMonitoredCounter(self, ectr, ctr_id)
+        self._monitored_counters[ctr_id] = mctr
+
+        return mctr
+
+    def _unmonitor_counter(self, ctr_id):
+        """
+        Remove a counter from the list of monitored ones.
+        """
+        if not ctr_id in self._monitored_counters:
+            raise ErisCtrlError("There is no such monitored counter with the id {}".format(ctr_id))
+
+        self._delete("/monitoring/session/{}/queries/{}".format(self._monitor_session_id, ctr_id))
+        del self._monitored_counters[ctr_id]
+
+    def _pull_monitoring_data(self):
+        """
+        Get the latest counter values from ERIS.
+        """
+        r = self._get("/monitoring", rmode=ErisCtrl.RequestMode.RAW)
+        if r.status_code != 200:
+            logger.info("Got wired status code: {}".format(r.status_code))
+            return
+
+        data = r.json()
+        for m in data["messages"]:
+            if m["sessionId"] != self._monitor_session_id:
+                logger.debug("Found message for a different session.")
+                continue
+
+            for q in m["queries"]:
+                qid = q["queryId"]
+
+                if not qid in self._monitored_counters:
+                    logger.debug("Found non existing query")
+                    continue
+
+                mctr = self._monitored_counters[qid]
+                mctr._push_values(q["relativeTime"], q["measurements"])
+
