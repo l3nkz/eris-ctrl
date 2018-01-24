@@ -185,7 +185,7 @@ class BenchmarkMode(OperationMode):
     def start(self, args):
         name = args.bench
         mode = ErisBenchmarkMode.CLIENTS if args.bench_mode == "clients" else ErisBenchmarkMode.TIMED
-        scale_factor = args.scale_factor
+        scale_factor = args.bench_factor
         clients = args.bench_clients
         interval = args.bench_interval
 
