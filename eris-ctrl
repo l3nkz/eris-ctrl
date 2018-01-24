@@ -3,75 +3,293 @@
 import sys
 import logging
 from argparse import ArgumentParser
+from functools import partial
+import time
+import statistics
 
-from eris import ErisCtrl, ErisCtrlError
+
+from eris import ErisCtrl, ErisCtrlError, ErisBenchmarkMode, ErisBenchmark
 
 
 logger = logging.getLogger("eris-ctrl")
 
+class HelpMode:
+    @staticmethod
+    def add_help(parser, parent):
+        parser.set_defaults(create=partial(HelpMode.create, parent))
+        parent.set_defaults(create=partial(HelpMode.create, parent))
 
-def main():
+    @staticmethod
+    def create(parent_parser):
+        return HelpMode(parent_parser)
+
+    def __init__(self, parser):
+        self._parser = parser
+
+    def parse_args(self, args):
+        pass
+
+    def run(self, args):
+        self._parser.print_help()
+
+
+def add_help_command(parser, commands):
+    HelpMode.add_help(commands.add_parser("help", help="Show this help message and exit"), parser)
+
+
+class OperationMode:
+    @staticmethod
+    def add_arguments(parser):
+        parser.add_argument("--url", "-u", help="The url where to find the eris interface",
+                type=str, dest="url", default="localhost")
+        parser.add_argument("--port","-p", help="The port where to find the eris interface",
+                type=int, dest="port", default=5189)
+        parser.add_argument("--user", help="The user for the eris interface",
+                type=str, dest="user", default="ctrl")
+        parser.add_argument("--passwd", help="The password for the user for the eris interface",
+                type=str, dest="passwd", default="ctrl")
+
+
+    def parse_args(self, args):
+        self._url = args.url
+        self._port = args.port
+        self._user = args.user
+        self._passwd = args.passwd
+
+
+class WorkerMode(OperationMode):
+    @staticmethod
+    def add_arguments(parser):
+        OperationMode.add_arguments(parser)
+
+        sub_cmds = parser.add_subparsers()
+
+        add_help_command(parser, sub_cmds)
+
+        status_cmd = sub_cmds.add_parser("status", help="Show the status of all ERIS workers")
+        status_cmd.set_defaults(create=WorkerMode.create)
+        status_cmd.set_defaults(subfunc=WorkerMode.status)
+
+        enable_cmd = sub_cmds.add_parser("enable", help="Enable ERIS workers")
+        enable_cmd.set_defaults(create=WorkerMode.create)
+        enable_cmd.set_defaults(subfunc=WorkerMode.enable)
+        enable_cmd.add_argument("wids", metavar="ID", nargs="+", help="The ID of the worker that should be enabled",
+                type=int)
+
+        disable_cmd = sub_cmds.add_parser("disable", help="Disable ERIS workers")
+        disable_cmd.set_defaults(create=WorkerMode.create)
+        disable_cmd.set_defaults(subfunc=WorkerMode.disable)
+        disable_cmd.add_argument("wids", metavar="ID", nargs="+", help="The ID of the worker that should be enabled",
+                type=int)
+
+    @staticmethod
+    def create():
+        return WorkerMode()
+
+    def __init__(self):
+        super().__init__()
+
+    def parse_args(self, args):
+        super().parse_args(args)
+
+        self.run = partial(args.subfunc, self)
+
+    def status(self, args):
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            workers = ectrl.workers()
+
+            for w in workers:
+                stat = w.status()
+                print("Worker {} (CPU:{}, SOCKET:{}) is {}{}".format(
+                        w.cpuid, w.cpuid, w.socketid,
+                        "enabled" if stat.enabled else "disabled",
+                        "(suspending)" if stat.suspending else ""
+                    ))
+
+    def enable(self, args):
+        enable_ids = args.wids
+
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            workers = ectrl.workers()
+
+            for w in workers:
+                if w.cpuid in enable_ids:
+                    w.enable()
+
+    def disable(self, args):
+        disable_ids = args.wids
+
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            workers = ectrl.workers()
+
+            for w in workers:
+                if w.cpuid in disable_ids:
+                    w.enable()
+
+
+class BenchmarkMode(OperationMode):
+    @staticmethod
+    def add_arguments(parser):
+        OperationMode.add_arguments(parser)
+
+        sub_cmds = parser.add_subparsers()
+
+        add_help_command(parser, sub_cmds)
+
+        list_cmd = sub_cmds.add_parser("list", help="List all available benchmarks")
+        list_cmd.set_defaults(create=BenchmarkMode.create)
+        list_cmd.set_defaults(subfunc=BenchmarkMode.list)
+
+        start_cmd = sub_cmds.add_parser("start", help="Start a benchmark for ERIS")
+        start_cmd.set_defaults(create=BenchmarkMode.create)
+        start_cmd.set_defaults(subfunc=BenchmarkMode.start)
+        start_cmd.add_argument("bench", help="The name of the benchmark")
+        start_cmd.add_argument("--mode", help="The mode with which the benchmark should be started", choices=["clients", "timed"],
+                default="clients", dest="bench_mode")
+        start_cmd.add_argument("--factor", help="The scaling factor for the benchmark", type=int, default=1,
+                dest="bench_factor")
+        start_cmd.add_argument("--clients", help="The number of clients for the benchmark", type=int, default=1,
+                dest="bench_clients")
+        start_cmd.add_argument("--interval", help="The interval at which clients should trigger (only in timed mode)", type=int,
+                default=1000, dest="bench_interval")
+
+        status_cmd = sub_cmds.add_parser("status", help="Get the status of a running benchmark")
+        status_cmd.set_defaults(create=BenchmarkMode.create)
+        status_cmd.set_defaults(subfunc=BenchmarkMode.status)
+        status_cmd.add_argument("bid", metavar="ID", help="The ID of the benchmark")
+
+        stop_cmd = sub_cmds.add_parser("stop", help="Stop a running benchmark")
+        stop_cmd.set_defaults(create=BenchmarkMode.create)
+        stop_cmd.set_defaults(subfunc=BenchmarkMode.stop)
+        stop_cmd.add_argument("bid", metavar="ID", help="The ID of the benchmark")
+
+    @staticmethod
+    def create():
+        return BenchmarkMode()
+
+    def __init__(self):
+        super().__init__()
+
+    def parse_args(self, args):
+        super().parse_args(args)
+
+        self.run = partial(args.subfunc, self)
+
+    def list(self, args):
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            benchs = ectrl.benchmarks()
+
+            for b in benchs:
+                print(b)
+
+    def start(self, args):
+        name = args.bench
+        mode = ErisBenchmarkMode.CLIENTS if args.bench_mode == "clients" else ErisBenchmarkMode.TIMED
+        scale_factor = args.scale_factor
+        clients = args.bench_clients
+        interval = args.bench_interval
+
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            bench = ectrl.benchmark_start(name, mode, scale_factor, clients, interval)
+            print(bench._handle)
+
+    def status(self, args):
+        bid = args.bid
+
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            bench = ErisBenchmark(ectrl, bid)
+            try:
+                print(bench.status())
+            except ErisCtrlError:
+                print("No benchmark with this ID")
+                sys.exit(1)
+
+    def stop(self, args):
+        bid = args.bid
+
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            bench = ErisBenchmark(ectrl, bid)
+            try:
+                bench.stop()
+            except ErisCtrlError:
+                print("No benchmark with this ID")
+
+
+class CounterMode(OperationMode):
+    @staticmethod
+    def add_arguments(parser):
+        OperationMode.add_arguments(parser)
+
+        parser.set_defaults(create=CounterMode.create)
+
+        sub_cmds = parser.add_subparsers()
+
+        add_help_command(parser, sub_cmds)
+
+        list_cmd = sub_cmds.add_parser("list", help="List all available counters that can be monitored")
+        list_cmd.set_defaults(create=CounterMode.create)
+        list_cmd.set_defaults(subfunc=CounterMode.list)
+
+        monitor_cmd = sub_cmds.add_parser("monitor", help="Monitor a list of counters")
+        monitor_cmd.set_defaults(create=CounterMode.create)
+        monitor_cmd.set_defaults(subfunc=CounterMode.monitor)
+        monitor_cmd.add_argument("ctr", metavar="CTR", nargs="+", help="The name of the counter that should be monitored")
+        monitor_cmd.add_argument("--duration", "-d", help="The duration how long the counter should be monitored in seconds",
+                type=int, default=10, dest="monitor_duration")
+
+    @staticmethod
+    def create():
+        return CounterMode()
+
+    def parse_args(self, args):
+        super().parse_args(args)
+
+        self.run = partial(args.subfunc, self)
+
+    def list(self, args):
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            ctrs = ectrl.counters()
+
+            for c in ctrs:
+                print(c.dist_name)
+
+    def monitor(self, args):
+        ctrs = args.ctr
+        dur = args.monitor_duration
+
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            mctrs = []
+            ectr = ectrl.counters()
+
+            for c in ectr:
+                if c.dist_name in ctrs:
+                    mctrs.append(c.monitor())
+
+            time.sleep(dur)
+
+            for c in mctrs:
+                print(c.counter.dist_name)
+                vals = []
+                for v in c.values():
+                    vals.append(v.value)
+                    print("{}(+{}): {}".format(v.abstime, v.reltime, v.value))
+
+                print("Avg: {}  StdDev: {}  Min: {}  Max: {}".format(
+                    statistics.mean(vals), statistics.stdev(vals), min(vals), max(vals)))
+
+
+if __name__ == "__main__":
     parser = ArgumentParser("eris-ctrl")
 
-    parser.add_argument("--url", "-u", help="The url where to find the eris interface",
-            type=str, dest="url", default="localhost")
-    parser.add_argument("--port","-p", help="The port where to find the eris interface",
-            type=int, dest="port", default=5189)
-    parser.add_argument("--user", help="The user for the eris interface",
-            type=str, dest="user", default="ctrl")
-    parser.add_argument("--passwd", help="The password for the user for the eris interface",
-            type=str, dest="passwd", default="ctrl")
+    commands = parser.add_subparsers(title="Available sub commands")
+    add_help_command(parser, commands)
+
+    WorkerMode.add_arguments(commands.add_parser("worker", help="Manipulate ERIS workers"))
+    BenchmarkMode.add_arguments(commands.add_parser("benchmark", help="Start/Stop benchmarks"))
+    CounterMode.add_arguments(commands.add_parser("counter", help="Monitor ERIS counters"))
 
     parsed_args = parser.parse_args()
 
-    url = parsed_args.url
-    port = parsed_args.port
-    user = parsed_args.user
-    passwd = parsed_args.passwd
-
-    try:
-        with ErisCtrl(url, port, user, passwd) as ectrl:
-            workers = ectrl.workers()
-
-            print("Eris currently runs with {} worker(s)".format(len(workers)))
-            print("Disabling all except the first one :)")
-
-            for worker in workers[1:]:
-                worker.disable()
-
-            print("Current worker status:")
-            for worker in workers:
-                print(worker.status())
-
-            print("Enabling all again :)")
-            for worker in workers:
-                worker.enable()
-
-            benchs = ectrl.benchmarks()
-            print("Available bechmarks: " + ",".join(benchs))
-
-            # Start monitoring one counter
-            ctr = ectrl.counters()[0].monitor()
-
-            print("Running first benchmark")
-            b = ectrl.benchmark_start(benchs[0])
-
-            print("Benchmark status:")
-            print(b.status())
-
-            input("Press Enter to stop the benchmark")
-            b.stop()
-
-            for v in ctr.values():
-                print(v)
-
-            print("Done!")
-    except ErisCtrlError as e:
-        print("Something went wrong:\n" + str(e))
-        sys.exit(1)
-    except Exception as e:
-        print("Something really bad went wrong:\n" + str(e))
-        sys.exit(2)
-
-if __name__ == "__main__":
-    main()
+    mode = parsed_args.create()
+    mode.parse_args(parsed_args)
+    mode.run(parsed_args)

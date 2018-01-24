@@ -165,6 +165,10 @@ class ErisMonitoredCounter:
 
             self._values.append(ErisCounterValue(v, int(reltime), self._start))
 
+    @property
+    def counter(self):
+        return self._ectr
+
     def values(self):
         self._ectrl._pull_monitoring_data()
 
@@ -193,6 +197,10 @@ class ErisCounter:
     @property
     def description(self):
         return self._description
+
+    @property
+    def dist_name(self):
+        return ".".join(self._classes) + "." + self._name
 
     def monitor(self):
         return self._ectrl._monitor_counter(self)
@@ -231,7 +239,6 @@ class ErisCtrl:
 
     def __exit__(self, type, value, traceback):
         self._logout()
-        return True
 
     def _login(self):
         try:
