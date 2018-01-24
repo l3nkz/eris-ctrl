@@ -290,6 +290,10 @@ if __name__ == "__main__":
 
     parsed_args = parser.parse_args()
 
-    mode = parsed_args.create()
-    mode.parse_args(parsed_args)
-    mode.run(parsed_args)
+    try:
+        mode = parsed_args.create()
+        mode.parse_args(parsed_args)
+        mode.run(parsed_args)
+    except Exception as e:
+        print("An error happened while executing:\n" + str(e))
+        sys.exit(1)
