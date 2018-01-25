@@ -124,7 +124,7 @@ class WorkerMode(OperationMode):
 
             for w in workers:
                 if w.cpuid in disable_ids:
-                    w.enable()
+                    w.disable()
 
 
 class BenchmarkMode(OperationMode):
