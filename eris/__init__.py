@@ -242,8 +242,13 @@ class ErisCtrl:
 
     def _login(self):
         try:
-            data = self._session.post(self._interface_url + "/session",
-                    data={"login" : self._user, "password" : self._passwd}).json()
+            r = self._session.post(self._interface_url + "/session",
+                    data={"login" : self._user, "password" : self._passwd})
+
+            if r.status_code != 200:
+                raise ErisCtrlError("Failed to login to ERIS -- wrong credentials?")
+
+            data = r.json()
             if data["success"] == True:
                 logger.debug("Successfully logged in to ERIS")
                 self._session_id = data["id"]
@@ -268,8 +273,15 @@ class ErisCtrl:
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
-        r = self._session.delete(self._interface_url + sub_url,
-                cookies={"id" : self._session_id})
+        done = False
+        while not done:
+            r = self._session.delete(self._interface_url + sub_url,
+                    cookies={"id" : self._session_id})
+
+            if r.status_code == 501:
+                continue
+
+            done = True
 
         return r.status_code == 200
 
@@ -277,8 +289,15 @@ class ErisCtrl:
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
-        r = self._session.post(self._interface_url + sub_url,
-                json=data, cookies={"id" : self._session_id})
+        done = False
+        while not done:
+            r = self._session.post(self._interface_url + sub_url,
+                    json=data, cookies={"id" : self._session_id})
+
+            if r.status_code == 501:
+                continue
+
+            done = True
 
         if rmode == ErisCtrl.RequestMode.RAW:
             return r
@@ -295,8 +314,15 @@ class ErisCtrl:
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
-        r = self._session.get(self._interface_url + sub_url,
-                json=data, cookies={"id" : self._session_id})
+        done = False
+        while not done:
+            r = self._session.get(self._interface_url + sub_url,
+                    json=data, cookies={"id" : self._session_id})
+
+            if r.status_code == 501:
+                continue
+
+            done = True
 
         if rmode == ErisCtrl.RequestMode.RAW:
             return r
