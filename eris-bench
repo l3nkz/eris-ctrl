@@ -146,6 +146,8 @@ class RunMode(OperationMode):
                 default=False, action="store_true", dest="detailed")
         parser.add_argument("--out", "-o", help="Redirect the script output to this file",
                 default=None, dest="outfile")
+        parser.add_argument("--wait", help="Wait for the benchmark to be fully started before measuring the counters",
+                default=False, action="store_true", dest="wait_for_benchmark")
 
     @staticmethod
     def create():
@@ -196,6 +198,7 @@ class RunMode(OperationMode):
         self._counters = self.parse_counters(args.counters)
         self._detailed_counters = args.detailed
         self._outfilepath = args.outfile
+        self._wait_for_benchmark = args.wait_for_benchmark
 
     def setup_workers(self, ectrl):
         workers = ectrl.workers()
@@ -243,14 +246,15 @@ class RunMode(OperationMode):
                 while bench.status() != "Loaded":
                     time.sleep(1)
 
-                # Wait another few seconds to let the database get up-to-speed.
-                # If we don't do this we might get wired counter values.
-                time.sleep(2)
+                if self._wait_for_benchmark:
+                    # Wait another few seconds to let the database get up-to-speed.
+                    # If we don't do this we might get wired counter values.
+                    time.sleep(2)
 
-                # Clear the counters. We don't want to measure the setup phase!
-                ectrl._pull_monitoring_data()
-                for ctr in monitored_ctrs:
-                    ctr.clear(False)
+                    # Clear the counters. We don't want to measure the setup phase!
+                    ectrl._pull_monitoring_data()
+                    for ctr in monitored_ctrs:
+                        ctr.clear(False)
 
                 # Now that the benchmark is running, wait the specified duration
                 time.sleep(self._duration)
