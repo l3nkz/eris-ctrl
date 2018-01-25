@@ -138,16 +138,45 @@ class RunMode(OperationMode):
                 type=int, default=1000, dest="interval")
         parser.add_argument("--duration", help="The benchmarking duration in seconds", type=int,
                 default=20, dest="duration")
-        parser.add_argument("--worker", help="The IDs of the workers that should be enabled (-1 == all)", type=int,
-                nargs='*', default=[-1], dest="workers")
+        parser.add_argument("--worker", help="The IDs of the workers that should be enabled (-1 == all)", type=str,
+                default="-1", dest="workers")
         parser.add_argument("--counter", help="The counters that should be monitored while benchmarking",
-                nargs='*', default=["Tasks.Finished"], dest="counters")
+                default="Tasks.Finished", dest="counters")
         parser.add_argument("--detailed", help="Print detailed information about the counter values",
                 default=False, action="store_true", dest="detailed")
 
     @staticmethod
     def create():
         return RunMode()
+
+    def parse_workers(self, workers):
+        items = [i.strip() for i in workers.split(",")]
+        result = []
+
+        for i in items:
+            if i == "-1":
+                result.append(-1)
+            elif "-" in i:
+                sub_items = i.split("-")
+                if len(sub_items) != 2:
+                    print("Incorrect worker definition: {}".format(i))
+                    sys.exit(1)
+
+                first, second = [s.strip() for s in sub_items]
+
+                for s in range(int(first), int(second)+1):
+                    result.append(s)
+            else:
+                result.append(int(i))
+
+        if -1 in result and len(result) != 1:
+            print("Conflicting worker definition! -1 can not be combined anything")
+            sys.exit(1)
+
+        return result
+
+    def parse_counters(self, counters):
+        return [i.strip() for i in counters.split(",")]
 
     def parse_args(self, args):
         super().parse_args(args)
@@ -158,8 +187,8 @@ class RunMode(OperationMode):
         self._scaling_factor = args.scaling_factor
         self._clients = args.clients
         self._interval = args.interval
-        self._workers = args.workers
-        self._counters = args.counters
+        self._workers = self.parse_workers(args.workers)
+        self._counters = self.parse_counters(args.counters)
         self._detailed_counters = args.detailed
 
     def setup_workers(self, ectrl):
