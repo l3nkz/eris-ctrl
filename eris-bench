@@ -90,7 +90,7 @@ class ListCountersMode(OperationMode):
             ctrs = ectrl.counters()
 
             for c in ctrs:
-                print(c.dist_name)
+                print("{}: {}".format(c.dist_name, c.description))
 
 
 class ListWorkersMode(OperationMode):
