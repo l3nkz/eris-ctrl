@@ -211,8 +211,20 @@ class RunMode(OperationMode):
                 while bench.status() != "Loaded":
                     time.sleep(1)
 
+                # Wait another few seconds to let the database get up-to-speed.
+                # If we don't do this we might get wired counter values.
+                time.sleep(2)
+
+                # Clear the counters. We don't want to measure the setup phase!
+                ectrl._pull_monitoring_data()
+                for ctr in monitored_ctrs:
+                    ctr.clear(False)
+
                 # Now that the benchmark is running, wait the specified duration
                 time.sleep(self._duration)
+
+                # Get the counter values before we stop the benchmark!
+                ectrl._pull_monitoring_data()
             except KeyboardInterrupt:
                 # Catch Ctrl-C and similar key presses.
                 pass
@@ -229,7 +241,7 @@ class RunMode(OperationMode):
                     print("{}:".format(ctr.counter.dist_name))
 
                     values = []
-                    for v in ctr.values():
+                    for v in ctr.values(False):
                         values.append(v.value)
 
                         print("{} (+{}): {}".format(v.abstime, v.reltime, v.value))
@@ -241,7 +253,7 @@ class RunMode(OperationMode):
                     ))
                 else:
                     values = []
-                    for v in ctr.values():
+                    for v in ctr.values(False):
                         values.append(v.value)
 
                     mean = statistics.mean(values)
