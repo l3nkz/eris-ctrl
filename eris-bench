@@ -144,10 +144,15 @@ class RunMode(OperationMode):
                 default="Tasks.Finished", dest="counters")
         parser.add_argument("--detailed", help="Print detailed information about the counter values",
                 default=False, action="store_true", dest="detailed")
+        parser.add_argument("--out", "-o", help="Redirect the script output to this file",
+                default=None, dest="outfile")
 
     @staticmethod
     def create():
         return RunMode()
+
+    def __init__(self):
+        self._outfile = None
 
     def parse_workers(self, workers):
         items = [i.strip() for i in workers.split(",")]
@@ -190,6 +195,7 @@ class RunMode(OperationMode):
         self._workers = self.parse_workers(args.workers)
         self._counters = self.parse_counters(args.counters)
         self._detailed_counters = args.detailed
+        self._outfilepath = args.outfile
 
     def setup_workers(self, ectrl):
         workers = ectrl.workers()
@@ -207,6 +213,12 @@ class RunMode(OperationMode):
                 w.enable()
             else:
                 w.disable()
+
+    def out(self, text):
+        if self._outfile is not None:
+            self._outfile.write(text+"\n")
+        else:
+            print(text)
 
     def run(self):
         with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
@@ -252,24 +264,32 @@ class RunMode(OperationMode):
             # Stop the benchmark again
             bench.stop()
 
+            # Open the output file if necessary
+            if self._outfilepath is not None:
+                try:
+                    self._outfile = open(self._outfilepath, mode="a")
+                except IOError:
+                    print("Failed to open output file {}".format(self._outfilepath))
+                    self._outfile = None
+
             # Print the values of the counters
             if not self._detailed_counters:
-                print("counter;mean;median,stddev;perc_stddev;max;min;total")
+                self.out("counter;mean;median,stddev;perc_stddev;max;min;total")
 
             for ctr in monitored_ctrs:
                 if self._detailed_counters:
-                    print("{}:".format(ctr.counter.dist_name))
+                    self.out("{}:".format(ctr.counter.dist_name))
 
                     values = []
                     for v in ctr.values(False):
                         values.append(v.value)
 
-                        print("{} (+{}): {}".format(v.abstime, v.reltime, v.value))
+                        self.out("{} (+{}): {}".format(v.abstime, v.reltime, v.value))
 
                     mean = statistics.mean(values)
                     median = statistics.median_low(values)
                     stddev = statistics.stdev(values)
-                    print("Mean: {}, Median: {}, Stddev: {} ({}%), Max: {}, Min: {}, Total: {}".format(
+                    self.out("Mean: {}, Median: {}, Stddev: {} ({}%), Max: {}, Min: {}, Total: {}".format(
                         mean, median, stddev, (stddev*100)/mean, max(values), min(values), sum(values)
                     ))
                 else:
@@ -281,10 +301,13 @@ class RunMode(OperationMode):
                     median = statistics.median_low(values)
                     stddev = statistics.stdev(values)
 
-                    print("{};{};{};{};{};{};{};{}".format(
+                    self.out("{};{};{};{};{};{};{};{}".format(
                         ctr.counter.dist_name, mean, median, stddev, (stddev*100)/mean,
                         max(values), min(values), sum(values)
                     ))
+
+            if self._outfile is not None:
+                self._outfile.close()
 
 
 if __name__ == "__main__":
