@@ -169,16 +169,18 @@ class ErisMonitoredCounter:
     def counter(self):
         return self._ectr
 
-    def values(self):
-        self._ectrl._pull_monitoring_data()
+    def values(self, refresh=True):
+        if refresh:
+            self._ectrl._pull_monitoring_data()
 
         return self._values
 
     def unmonitor(self):
         self._ectrl._unmonitor_counter(self._ctr_id)
 
-    def clear(self):
-        self._ectrl._pull_monitoring_data()
+    def clear(self, refresh=True):
+        if refresh:
+            self._ectrl._pull_monitoring_data()
 
         self._values.clear()
 
