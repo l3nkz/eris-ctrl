@@ -234,7 +234,7 @@ class RunMode(OperationMode):
 
             # Print the values of the counters
             if not self._detailed_counters:
-                print("counter;mean;stddev;perc_stddev;max;min")
+                print("counter;mean;median,stddev;perc_stddev;max;min;total")
 
             for ctr in monitored_ctrs:
                 if self._detailed_counters:
@@ -247,9 +247,10 @@ class RunMode(OperationMode):
                         print("{} (+{}): {}".format(v.abstime, v.reltime, v.value))
 
                     mean = statistics.mean(values)
+                    median = statistics.median_low(values)
                     stddev = statistics.stdev(values)
-                    print("Mean: {}, Stddev: {} ({}%), Max: {}, Min: {}".format(
-                        mean, stddev, (stddev*100)/mean, max(values), min(values)
+                    print("Mean: {}, Median: {}, Stddev: {} ({}%), Max: {}, Min: {}, Total: {}".format(
+                        mean, median, stddev, (stddev*100)/mean, max(values), min(values), sum(values)
                     ))
                 else:
                     values = []
@@ -257,10 +258,12 @@ class RunMode(OperationMode):
                         values.append(v.value)
 
                     mean = statistics.mean(values)
+                    median = statistics.median_low(values)
                     stddev = statistics.stdev(values)
 
-                    print("{};{};{};{};{};{}".format(
-                        ctr.counter.dist_name, mean, stddev, (stddev*100)/mean, max(values), min(values)
+                    print("{};{};{};{};{};{};{};{}".format(
+                        ctr.counter.dist_name, mean, median, stddev, (stddev*100)/mean,
+                        max(values), min(values), sum(values)
                     ))
 
 
