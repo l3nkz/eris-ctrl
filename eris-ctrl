@@ -152,6 +152,8 @@ class BenchmarkMode(OperationMode):
                 dest="bench_clients")
         start_cmd.add_argument("--interval", help="The interval at which clients should trigger (only in timed mode)", type=int,
                 default=1000, dest="bench_interval")
+        start_cmd._argument("--requests", help="The number of requests that should be done per transaction",
+                type=int, default=10, dest="bench_requests")
 
         status_cmd = sub_cmds.add_parser("status", help="Get the status of a running benchmark")
         status_cmd.set_defaults(create=BenchmarkMode.create)
@@ -188,9 +190,10 @@ class BenchmarkMode(OperationMode):
         scale_factor = args.bench_factor
         clients = args.bench_clients
         interval = args.bench_interval
+        requests = args.bench_requests
 
         with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
-            bench = ectrl.benchmark_start(name, mode, scale_factor, clients, interval)
+            bench = ectrl.benchmark_start(name, mode, scale_factor, clients, interval, requests)
             print(bench._handle)
 
     def status(self, args):

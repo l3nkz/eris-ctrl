@@ -354,7 +354,8 @@ class ErisCtrl:
 
         return benchs
 
-    def benchmark_start(self, bench, mode=ErisBenchmarkMode.CLIENTS, scale_factor=1, clients=1, interval=1000):
+    def benchmark_start(self, bench, mode=ErisBenchmarkMode.CLIENTS, scale_factor=1, clients=1, interval=1000,
+            requests=10):
         """
         Start one specific benchmark instance on ERIS.
 
@@ -362,19 +363,20 @@ class ErisCtrl:
         @type bench:    str
         @param mode:    The mode in with with the benchmark should be started.
         @type mode:     ErisBenchmarkMode
-        @param scale_factor: TODO
+        @param scale_factor: The number with which the benchmark base data size should be scaled.
         @type scale_factor: int
         @param clients: The number of clients that should be used when started in the 'clients' mode.
         @type clients:  int
-        @param interval: TODO
+        @param interval: The interval between individual requests in 'timed' mode.
         @type interval: int
+        @param requests: The number of requests that should be started per transaction.
+        @type requests: int
         @returns:       A handle to the benchmark instance.
         @rtype:         ErisBenchmark
         """
-
-        data = self._post("/benchmarking/start/{name}/{mode}/{scale_factor}/{clients}/{interval}".format(
+        data = self._post("/benchmarking/start/{name}/{mode}/{scale_factor}/{clients}/{interval}/{requests}".format(
             name=bench, mode=mode.name.lower(), scale_factor=scale_factor, clients=clients,
-            interval=interval))
+            interval=interval, requests=requests))
 
         return ErisBenchmark(self, data["handle"])
 

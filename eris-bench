@@ -130,12 +130,14 @@ class RunMode(OperationMode):
         parser.add_argument("bench", help="The name of the benchmark that should be started")
         parser.add_argument("--mode", help="The benchmarking mode (clients|timed)",
                 choices=["clients", "timed"], default="clients", dest="mode")
-        parser.add_argument("--factor", help="The scaling factor for the benchmark", type=int,
+        parser.add_argument("--factor", help="The scaling factor for the benchmark (size == sf * base size)", type=int,
                 default=1, dest="scaling_factor")
         parser.add_argument("--clients", help="The number of clients that should be used in clients mode", type=int,
                 default=1, dest="clients")
         parser.add_argument("--interval", help="The interval (in milliseconds) between requests that should be used in timed mode",
                 type=int, default=1000, dest="interval")
+        parser.add_argument("--requests", help="The number of requests that should be done per transaction",
+                type=int, default=10, dest="requests")
         parser.add_argument("--duration", help="The benchmarking duration in seconds", type=int,
                 default=20, dest="duration")
         parser.add_argument("--worker", help="The IDs of the workers that should be enabled (-1 == all)", type=str,
@@ -194,6 +196,7 @@ class RunMode(OperationMode):
         self._scaling_factor = args.scaling_factor
         self._clients = args.clients
         self._interval = args.interval
+        self._requests = args.requests
         self._workers = self.parse_workers(args.workers)
         self._counters = self.parse_counters(args.counters)
         self._detailed_counters = args.detailed
@@ -239,7 +242,7 @@ class RunMode(OperationMode):
 
             # Start the benchmark
             bench = ectrl.benchmark_start(self._bench, self._mode, self._scaling_factor,
-                    self._clients, self._interval)
+                    self._clients, self._interval, self._requests)
 
             try:
                 # Wait until the benchmark is running (that can take some time)
