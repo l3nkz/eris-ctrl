@@ -152,7 +152,7 @@ class BenchmarkMode(OperationMode):
                 dest="bench_clients")
         start_cmd.add_argument("--interval", help="The interval at which clients should trigger (only in timed mode)", type=int,
                 default=1000, dest="bench_interval")
-        start_cmd._argument("--requests", help="The number of requests that should be done per transaction",
+        start_cmd.add_argument("--requests", help="The number of requests that should be done per transaction",
                 type=int, default=10, dest="bench_requests")
 
         status_cmd = sub_cmds.add_parser("status", help="Get the status of a running benchmark")
