@@ -78,9 +78,9 @@ class ErisWorker:
         @returns:       Whether the disabling was successful or not.
         @rtype:         bool
         """
-        r = self._ectrl._post("/osctrl/lpv/{}/disable".format(self._cpuid), rmode=ErisCtrl.RequestMode.RAW)
+        c = self._ectrl._post("/osctrl/lpv/{}/disable".format(self._cpuid), rmode=ErisCtrl.RequestMode.CODE)
 
-        return r.status_code == 200
+        return c == 200
 
     def enable(self):
         """
@@ -89,9 +89,9 @@ class ErisWorker:
         @returns:       Whether the enabling was successful or not.
         @rtype:         bool
         """
-        r = self._ectrl._post("/osctrl/lpv/{}/enable".format(self._cpuid), rmode=ErisCtrl.RequestMode.RAW)
+        c = self._ectrl._post("/osctrl/lpv/{}/enable".format(self._cpuid), rmode=ErisCtrl.RequestMode.CODE)
 
-        return r.status_code == 200
+        return c == 200
 
     def enabled(self):
         """
@@ -216,8 +216,8 @@ class ErisCtrl:
     """
 
     class RequestMode(Enum):
-        RAW = 1
-        JSON = 2
+        JSON = 1
+        CODE = 2
         BOOL = 3
 
     def __init__(self, url, port, user, passwd):
@@ -244,18 +244,18 @@ class ErisCtrl:
 
     def _login(self):
         try:
-            r = self._session.post(self._interface_url + "/session",
-                    data={"login" : self._user, "password" : self._passwd})
+            with self._session.post(self._interface_url + "/session",
+                    data={"login" : self._user, "password" : self._passwd}) as r:
 
-            if r.status_code != 200:
-                raise ErisCtrlError("Failed to login to ERIS -- wrong credentials?")
+                if r.status_code != 200:
+                    raise ErisCtrlError("Failed to login to ERIS -- wrong credentials?")
 
-            data = r.json()
-            if data["success"] == True:
-                logger.debug("Successfully logged in to ERIS")
-                self._session_id = data["id"]
-            else:
-                raise ErisCtrlError("Failed to login to ERIS -- wrong credentials?")
+                data = r.json()
+                if data["success"] == True:
+                    logger.debug("Successfully logged in to ERIS")
+                    self._session_id = data["id"]
+                else:
+                    raise ErisCtrlError("Failed to login to ERIS -- wrong credentials?")
         except:
             raise ErisCtrlError("Couldn't connect to ERIS -- not running?")
 
@@ -275,67 +275,60 @@ class ErisCtrl:
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
-        done = False
-        while not done:
-            r = self._session.delete(self._interface_url + sub_url,
-                    cookies={"id" : self._session_id})
+        while True:
+            with self._session.delete(self._interface_url + sub_url,
+                    cookies={"id" : self._session_id}) as r:
 
-            if r.status_code == 501:
-                continue
+                if r.status_code == 501:
+                    logger.debug("Got 501 response -- Retrying")
+                    continue
 
-            done = True
-
-        return r.status_code == 200
+                return r.status_code == 200
 
     def _post(self, sub_url, data={}, rmode=RequestMode.JSON):
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
-        done = False
-        while not done:
-            r = self._session.post(self._interface_url + sub_url,
-                    json=data, cookies={"id" : self._session_id})
+        while True:
+            with self._session.post(self._interface_url + sub_url,
+                    json=data, cookies={"id" : self._session_id}) as r:
 
-            if r.status_code == 501:
-                continue
+                if r.status_code == 501:
+                    logger.debug("Got 501 response -- Retrying")
+                    continue
 
-            done = True
+                if rmode == ErisCtrl.RequestMode.CODE:
+                    return r.status_code
 
-        if rmode == ErisCtrl.RequestMode.RAW:
-            return r
+                if rmode == ErisCtrl.RequestMode.JSON:
+                    if r.status_code != 200:
+                        raise ErisCtrlError("Unable to make POST request to {}.\nResponse: {}".format(sub_url, r))
 
-        if rmode == ErisCtrl.RequestMode.JSON:
-            if r.status_code != 200:
-                raise ErisCtrlError("Unable to make POST request to {}.\nResponse: {}".format(sub_url, r))
-
-            return r.json()
-        else:
-            return r.status_code == 200
+                    return r.json()
+                else:
+                    return r.status_code == 200
 
     def _get(self, sub_url, data={}, rmode=RequestMode.JSON):
         if not self._is_logged_in():
             raise ErisCtrlError("Not connected to ERIS")
 
-        done = False
-        while not done:
-            r = self._session.get(self._interface_url + sub_url,
-                    json=data, cookies={"id" : self._session_id})
+        while True:
+            with self._session.get(self._interface_url + sub_url,
+                    json=data, cookies={"id" : self._session_id}) as r:
 
-            if r.status_code == 501:
-                continue
+                if r.status_code == 501:
+                    continue
 
-            done = True
+                if rmode == ErisCtrl.RequestMode.CODE:
+                    return r.status_code
 
-        if rmode == ErisCtrl.RequestMode.RAW:
-            return r
+                if rmode == ErisCtrl.RequestMode.JSON:
+                    if r.status_code != 200:
+                        raise ErisCtrlError("Unable to make GET request to {}.\nResponse: {}".format(sub_url, r))
 
-        if rmode == ErisCtrl.RequestMode.JSON:
-            if r.status_code != 200:
-                raise ErisCtrlError("Unable to make GET request to {}.\nResponse: {}".format(sub_url, r))
-
-            return r.json()
-        else:
-            return r.status_code == 200
+                    return r.json()
+                else:
+                    return r.status_code == 200
 
 
     # Functions for the benchmark interface of ERIS
@@ -447,24 +440,23 @@ class ErisCtrl:
         """
         Get the latest counter values from ERIS.
         """
-        r = self._get("/monitoring", rmode=ErisCtrl.RequestMode.RAW)
-        if r.status_code != 200:
-            logger.info("Got wired status code: {}".format(r.status_code))
-            return
-
-        data = r.json()
-        for m in data["messages"]:
-            if m["sessionId"] != self._monitor_session_id:
-                logger.debug("Found message for a different session.")
-                continue
-
-            for q in m["queries"]:
-                qid = q["queryId"]
-
-                if not qid in self._monitored_counters:
-                    logger.debug("Found non existing query")
+        try:
+            data = self._get("/monitoring", rmode=ErisCtrl.RequestMode.JSON)
+            for m in data["messages"]:
+                if m["sessionId"] != self._monitor_session_id:
+                    logger.debug("Found message for a different session.")
                     continue
 
-                mctr = self._monitored_counters[qid]
-                mctr._push_values(q["relativeTime"], q["measurements"])
+                for q in m["queries"]:
+                    qid = q["queryId"]
 
+                    if not qid in self._monitored_counters:
+                        logger.debug("Found non existing query")
+                        continue
+
+                    mctr = self._monitored_counters[qid]
+                    mctr._push_values(q["relativeTime"], q["measurements"])
+
+        except ErisCtrlError as e:
+            logger.info("Failed to pull monitoring data.\nGot: {}".format(e))
+            return
