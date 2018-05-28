@@ -143,7 +143,7 @@ class RunMode(OperationMode):
         parser.add_argument("--worker", help="The IDs of the workers that should be enabled (-1 == all)", type=str,
                 default="-1", dest="workers")
         parser.add_argument("--counter", help="The counters that should be monitored while benchmarking",
-                default="Tasks.Finished", dest="counters")
+                default="Tasks.Finished, Tasks.Latency Average", dest="counters")
         parser.add_argument("--detailed", help="Print detailed information about the counter values",
                 default=False, action="store_true", dest="detailed")
         parser.add_argument("--out", "-o", help="Redirect the script output to this file",
