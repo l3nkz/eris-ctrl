@@ -251,13 +251,13 @@ class RunMode(OperationMode):
 
                 if self._wait_for_benchmark:
                     # Wait another few seconds to let the database get up-to-speed.
-                    # If we don't do this we might get wired counter values.
+                    # If we don't do this we might get strange counter values.
                     time.sleep(2)
 
-                    # Clear the counters. We don't want to measure the setup phase!
-                    ectrl._pull_monitoring_data()
-                    for ctr in monitored_ctrs:
-                        ctr.clear(False)
+                # Clear the counters. We don't want to measure the setup phase!
+                ectrl._pull_monitoring_data()
+                for ctr in monitored_ctrs:
+                    ctr.clear(False)
 
                 # Now that the benchmark is running, wait the specified duration
                 time.sleep(self._duration)
