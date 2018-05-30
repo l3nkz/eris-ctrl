@@ -209,13 +209,16 @@ class RunMode(OperationMode):
     def setup_workers(self, ectrl):
         workers = ectrl.workers()
 
+        # We have to set the frequency on all workers otherwise it will not have any effect
+        if self._frequency != -1:
+            for w in workers:
+                if not w.frequency(self._frequency * 1000):
+                    print("Failed to set worker {} to frequency {} MHz".format(w.cpuid, self._frequency))
+
         # -1 is special, we have to enable all workers
         if -1 in self._workers:
             for w in workers:
                 w.enable()
-                if self._frequency != -1:
-                    if not w.frequency(self._frequency * 1000 * 1000):
-                        print("Failed to set worker {} frequency".format(w.cpuid))
 
             return
 
@@ -223,9 +226,6 @@ class RunMode(OperationMode):
         for w in workers:
             if w.cpuid in self._workers:
                 w.enable()
-                if self._frequency != -1:
-                    if not w.frequency(self._frequency * 1000 * 1000):
-                        print("Failed to set worker {} frequency".format(w.cpuid))
             else:
                 w.disable()
 
