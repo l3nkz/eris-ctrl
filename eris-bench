@@ -181,10 +181,10 @@ class RunMode(OperationMode):
                 result.append(int(i))
 
         if -1 in result and len(result) != 1:
-            print("Conflicting worker definition! -1 can not be combined anything")
+            print("Conflicting worker definition! -1 can not be combined with anything")
             sys.exit(1)
 
-        return result
+        return list(set(result))
 
     def parse_counters(self, counters):
         return [i.strip() for i in counters.split(",")]
