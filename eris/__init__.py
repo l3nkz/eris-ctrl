@@ -476,3 +476,21 @@ class ErisCtrl:
         except ErisCtrlError as e:
             logger.info("Failed to pull monitoring data.\nGot: {}".format(e))
             return
+
+    def energy_management(ecl, autoadapt):
+        """
+        Enable/Disable the ECL and the auto-adapt features of ERIS
+
+        @param  ecl:    Whether or not ERIS should use its ECL.
+        @type ecl:      bool
+        @param autoadapt: Whether or not ERIS should use its auto-adapt feature.
+        @type autoadapt: bool
+        @returns:       Whether or not changing this features was successful.
+        @rtype:         bool
+        """
+        ecl_code = self._post("/osctrl/setcontrolstatus/eclon/{}".format("0" if not ecl else "1"),
+                rmode=ErisCtrl.RequestMode.CODE)
+        adapt_code = self._post("/osctrl/setcontrolstatus/adapton/{}".format("0" if not autoadapt else "1"),
+                rmode=ErisCtrl.RequestMode.CODE)
+
+        return ecl_code == 200 and adapt_code == 200
