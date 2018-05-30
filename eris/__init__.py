@@ -541,7 +541,7 @@ class ErisCtrl:
             logger.info("Failed to pull monitoring data.\nGot: {}".format(e))
             return
 
-    def energy_management(ecl, autoadapt):
+    def energy_management(self, ecl, autoadapt):
         """
         Enable/Disable the ECL and the auto-adapt features of ERIS
 
