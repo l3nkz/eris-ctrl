@@ -51,6 +51,115 @@ class ErisBenchmark:
         self._ectrl._post("/benchmarking/stop/{handle}".format(handle=self._handle), rmode=ErisCtrl.RequestMode.BOOL)
 
 
+class ErisCounterValue:
+    def __init__(self, value, reltime, start_time):
+        self._value = value
+        self._reltime = reltime
+        self._abstime = start_time + timedelta(milliseconds=reltime)
+
+    def __str__(self):
+        return "{}@{} (+{})".format(self._value, self._abstime, self._reltime)
+
+    @property
+    def value(self):
+        return self._value
+
+    @property
+    def reltime(self):
+        return self._reltime
+
+    @property
+    def abstime(self):
+        return self._abstime
+
+
+class ErisMonitoredCounter:
+    def __init__(self, ectrl, ectr, ctr_id):
+        self._ectrl = ectrl
+        self._ectr = ectr
+        self._ctr_id = ctr_id
+
+        self._start = datetime.now()
+        self._values = []
+
+    def _push_values(self, reltime, values):
+        for v in values:
+            if v["type"] == "int64":
+                v = int(v["value"])
+            elif v["type"] == "double" or v["type"] == "float":
+                v = float(v["value"])
+            else:
+                v = v["value"]
+
+            self._values.append(ErisCounterValue(v, int(reltime), self._start))
+
+    @property
+    def counter(self):
+        return self._ectr
+
+    def values(self, refresh=True):
+        if refresh:
+            self._ectrl._pull_monitoring_data()
+
+        return self._values
+
+    def unmonitor(self):
+        self._ectrl._unmonitor_counter(self._ctr_id)
+
+    def clear(self, refresh=True):
+        if refresh:
+            self._ectrl._pull_monitoring_data()
+
+        self._values.clear()
+
+
+class ErisCounter:
+    def __init__(self, ectrl, name, description, classes):
+        self._ectrl = ectrl
+        self._name = name
+        self._description = description
+        self._classes = classes
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def description(self):
+        return self._description
+
+    @property
+    def dist_name(self):
+        return ".".join(self._classes) + "." + self._name
+
+    def monitor(self):
+        return self._ectrl._monitor_counter(self)
+
+
+class ErisWorkerCounter(ErisCounter):
+    def __init__(self, ectrl, name, description, classes, monitors=None):
+        if monitors is not None and len(classes) != len(monitors):
+            raise RuntimeError("there must be equally many monitors as classes")
+
+        super().__init__(ectrl, name, description, classes)
+
+        if monitors is None:
+            self._monitors = [None for _ in classes]
+        else:
+            self._monitors = monitors
+
+    @property
+    def dist_name(self):
+        return ".".join([c if m is None else c+"-"+m for c,m in zip(self._classes, self._monitors)]) + "." + self._name
+
+    @property
+    def ctr_name(self):
+        return super().dist_name
+
+    def monitor(self):
+        return self._ectrl._monitor_worker_counter(self)
+
+
 ErisWorkerStatus = collections.namedtuple("ErisWorkerStatus", ["enabled", "suspending"])
 
 class ErisWorker:
@@ -135,90 +244,17 @@ class ErisWorker:
 
         return c == 200
 
+    def counters(self):
+        """
+        Get the list of per-worker counters.
 
-class ErisCounterValue:
-    def __init__(self, value, reltime, start_time):
-        self._value = value
-        self._reltime = reltime
-        self._abstime = start_time + timedelta(milliseconds=reltime)
-
-    def __str__(self):
-        return "{}@{} (+{})".format(self._value, self._abstime, self._reltime)
-
-    @property
-    def value(self):
-        return self._value
-
-    @property
-    def reltime(self):
-        return self._reltime
-
-    @property
-    def abstime(self):
-        return self._abstime
-
-
-class ErisMonitoredCounter:
-    def __init__(self, ectrl, ectr, ctr_id):
-        self._ectrl = ectrl
-        self._ectr = ectr
-        self._ctr_id = ctr_id
-
-        self._start = datetime.now()
-        self._values = []
-
-    def _push_values(self, reltime, values):
-        for v in values:
-            if v["type"] == "int64":
-                v = int(v["value"])
-            elif v["type"] == "double" or v["type"] == "float":
-                v = float(v["value"])
-            else:
-                v = v["value"]
-
-            self._values.append(ErisCounterValue(v, int(reltime), self._start))
-
-    @property
-    def counter(self):
-        return self._ectr
-
-    def values(self, refresh=True):
-        if refresh:
-            self._ectrl._pull_monitoring_data()
-
-        return self._values
-
-    def unmonitor(self):
-        self._ectrl._unmonitor_counter(self._ctr_id)
-
-    def clear(self, refresh=True):
-        if refresh:
-            self._ectrl._pull_monitoring_data()
-
-        self._values.clear()
-
-
-class ErisCounter:
-    def __init__(self, ectrl, name, description, classes):
-        self._ectrl = ectrl
-        self._name = name
-        self._description = description
-        self._classes = classes
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def description(self):
-        return self._description
-
-    @property
-    def dist_name(self):
-        return ".".join(self._classes) + "." + self._name
-
-    def monitor(self):
-        return self._ectrl._monitor_counter(self)
+        @returns: The list of counters that are available per worker.
+        @rtype: list(ErisCounter)
+        """
+        return [
+                ErisWorkerCounter(self._ectrl, "Task Time", "The time the worker spends processing queries.",
+                    ["Sockets", "LPVs"], [None, str(self._cpuid)])
+               ]
 
 
 class ErisCtrl:
@@ -440,6 +476,32 @@ class ErisCtrl:
         ctr_id = data["id"]
 
         mctr = ErisMonitoredCounter(self, ectr, ctr_id)
+        self._monitored_counters[ctr_id] = mctr
+
+        return mctr
+
+    def _monitor_worker_counter(self, wctr):
+        """
+        Add a worker counter to the list of monitored ones.
+
+        @param wctr:    The ErisWorkerCounter instance that wraps the monitorable counter.
+        @type wctr:     ErisWorkerCounter
+        @return:        The counter wrapper that can be used to gather values.
+        @rtype:         ErisMonitoredCounter
+        """
+        post_data = {"classes" : [], "counter" : wctr.name}
+        for c, m in zip(wctr._classes, wctr._monitors):
+            if m is None:
+                post_data["classes"].append({"class" : c})
+            else:
+                post_data["classes"].append({"class" : c, "monitor" : m})
+
+        data = self._post("/monitoring/session/{}/queries".format(self._monitor_session_id),
+                data=post_data)
+
+        ctr_id = data["id"]
+
+        mctr = ErisMonitoredCounter(self, wctr, ctr_id)
         self._monitored_counters[ctr_id] = mctr
 
         return mctr
