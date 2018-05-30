@@ -87,10 +87,17 @@ class ListCountersMode(OperationMode):
 
     def run(self):
         with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            print("Global counters:")
             ctrs = ectrl.counters()
 
             for c in ctrs:
                 print("{}: {}".format(c.dist_name, c.description))
+
+            print("Worker counters:")
+            wctrs = ectrl.workers()[0].counters()
+
+            for c in wctrs:
+                print("{}: {}".format(c.ctr_name, c.description))
 
 
 class ListWorkersMode(OperationMode):
@@ -144,8 +151,10 @@ class RunMode(OperationMode):
                 default="-1", dest="workers")
         parser.add_argument("--frequency", help="The freq in MHz at which the worker should operate", type=int,
                 default="-1", dest="frequency")
-        parser.add_argument("--counter", help="The counters that should be monitored while benchmarking",
+        parser.add_argument("--counter", help="The global counters that should be monitored while benchmarking",
                 default="Tasks.Finished,Tasks.Started,Tasks.Active,Tasks.Latency Average", dest="counters")
+        parser.add_argument("--worker-counter", help="The per-worker counters that should be monitored while benchmarking",
+                default="Sockets.LPVs.Task Time", dest="worker_counters")
         parser.add_argument("--csv", help="Output the counter data as csv file", default=False, action="store_true",
                 dest="csv")
         parser.add_argument("--out", "-o", help="Redirect the script output to this file",
@@ -202,6 +211,7 @@ class RunMode(OperationMode):
         self._workers = self.parse_workers(args.workers)
         self._frequency = args.frequency
         self._counters = self.parse_counters(args.counters)
+        self._worker_counters = self.parse_counters(args.worker_counters)
         self._csv = args.csv
         self._outfilepath = args.outfile
         self._wait_for_benchmark = args.wait_for_benchmark
@@ -229,6 +239,20 @@ class RunMode(OperationMode):
             else:
                 w.disable()
 
+    def setup_counters(self, ectrl):
+        ctrs = []
+
+        for ctr in ectrl.counters():
+            if ctr.dist_name in self._counters:
+                ctrs.append(ctr.monitor())
+
+        for w in ectrl.workers():
+            for ctr in w.counters():
+                if ctr.ctr_name in self._worker_counters:
+                    ctrs.append(ctr.monitor())
+
+        return ctrs
+
     def out(self, text):
         if self._outfile is not None:
             self._outfile.write(text+"\n")
@@ -244,10 +268,7 @@ class RunMode(OperationMode):
             # Enable/Disable the ERIS workers
             self.setup_workers(ectrl)
 
-            monitored_ctrs = []
-            for ctr in ectrl.counters():
-                if ctr.dist_name in self._counters:
-                    monitored_ctrs.append(ctr.monitor())
+            monitored_ctrs = self.setup_counters(ectrl)
 
             # Start the benchmark
             bench = ectrl.benchmark_start(self._bench, self._mode, self._scaling_factor,
