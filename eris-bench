@@ -142,6 +142,8 @@ class RunMode(OperationMode):
                 default=20, dest="duration")
         parser.add_argument("--worker", help="The IDs of the workers that should be enabled (-1 == all)", type=str,
                 default="-1", dest="workers")
+        parser.add_argument("--frequency", help="The freq in MHz at which the worker should operate", type=int,
+                default="-1", dest="frequency")
         parser.add_argument("--counter", help="The counters that should be monitored while benchmarking",
                 default="Tasks.Finished, Tasks.Latency Average", dest="counters")
         parser.add_argument("--csv", help="Output the counter data as csv file", default=False, action="store_true",
@@ -198,6 +200,7 @@ class RunMode(OperationMode):
         self._interval = args.interval
         self._requests = args.requests
         self._workers = self.parse_workers(args.workers)
+        self._frequency = args.frequency
         self._counters = self.parse_counters(args.counters)
         self._csv = args.csv
         self._outfilepath = args.outfile
@@ -210,6 +213,9 @@ class RunMode(OperationMode):
         if -1 in self._workers:
             for w in workers:
                 w.enable()
+                if self._frequency != -1:
+                    if not w.frequency(self._frequency * 1000 * 1000):
+                        print("Failed to set worker {} frequency".format(w.cpuid))
 
             return
 
@@ -217,6 +223,9 @@ class RunMode(OperationMode):
         for w in workers:
             if w.cpuid in self._workers:
                 w.enable()
+                if self._frequency != -1:
+                    if not w.frequency(self._frequency * 1000 * 1000):
+                        print("Failed to set worker {} frequency".format(w.cpuid))
             else:
                 w.disable()
 
