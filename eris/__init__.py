@@ -413,9 +413,11 @@ class ErisCtrl:
         @returns:       The list of all available monitoring counters for ERIS.
         @rtype:         list(ErisCounters)
         """
-        # Currently we hard-code the "Finished Tasks" and "Average Latency" counter
+        # Currently we hard-code a list of useful counters
         return [
-                ErisCounter(self, "Finished", "Number of tasks finished.", ["Tasks"]),
+                ErisCounter(self, "Started", "Number of started tasks.", ["Tasks"]),
+                ErisCounter(self, "Active", "Number of active tasks.", ["Tasks"]),
+                ErisCounter(self, "Finished", "Number of finished tasks.", ["Tasks"]),
                 ErisCounter(self, "Latency Average", "Average latency of the tasks.", ["Tasks"])
                ]
 
