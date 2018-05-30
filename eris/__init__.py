@@ -122,14 +122,16 @@ class ErisWorker:
 
         return ErisWorkerStatus(data["running"], data["suspendPending"])
 
-    def frequency(self, freq_hz):
+    def frequency(self, freq_khz):
         """
         Set the CPU frequency for this ERIS worker thread.
 
+        @param freq_khz: The target frequency for the ERIS worker thread in kHz.
+        @type freq_khz: int
         @returns:       Whether the setting of the frequency was successful or not.
         @rtype:         bool
         """
-        c = self._ectrl._post("/osctrl/setfrequency/{}/{}".format(self._cpuid, freq_hz), rmode=ErisCtrl.RequestMode.CODE)
+        c = self._ectrl._post("/osctrl/setfrequency/{}/{}".format(self._cpuid, freq_khz), rmode=ErisCtrl.RequestMode.CODE)
 
         return c == 200
 
