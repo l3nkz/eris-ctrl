@@ -252,7 +252,9 @@ class ErisWorker:
         @rtype: list(ErisCounter)
         """
         return [
-                ErisWorkerCounter(self._ectrl, "Task Time", "The time the worker spends processing queries.",
+                ErisWorkerCounter(self._ectrl, "Task Time", "The time the worker spends scheduling queries.",
+                    ["Sockets", "LPVs"], [None, str(self._cpuid)]),
+                ErisWorkerCounter(self._ectrl, "Buffer Time", "The time the worker spends processing queries.",
                     ["Sockets", "LPVs"], [None, str(self._cpuid)])
                ]
 
