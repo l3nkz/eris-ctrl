@@ -327,13 +327,19 @@ class RunMode(OperationMode):
                     for v in ctr.values(False):
                         values.append(v.value)
 
-                    mean = statistics.mean(values)
-                    median = statistics.median_low(values)
-                    stddev = statistics.stdev(values)
+                    if len(values) > 0:
+                        mean = statistics.mean(values)
+                        median = statistics.median_low(values)
+                        stddev = statistics.stdev(values)
+                        perc_stddev = (stddev*100)/mean if mean != 0 else 0
+                        minimum = min(values)
+                        maximum = max(values)
+                        total = sum(values)
+                    else:
+                        mean = median = stddev = perc_stddev = minimum = maximum = total = 0
 
                     self.out("{};{};{};{};{};{};{};{}".format(
-                        ctr.counter.dist_name, mean, median, stddev, (stddev*100)/mean,
-                        max(values), min(values), sum(values)
+                        ctr.counter.dist_name, mean, median, stddev, perc_stddev, minimum, maximum, total
                     ))
 
             if self._outfile is not None:
