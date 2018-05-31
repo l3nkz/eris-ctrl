@@ -154,7 +154,7 @@ class RunMode(OperationMode):
         parser.add_argument("--counter", help="The global counters that should be monitored while benchmarking",
                 default="Tasks.Finished,Tasks.Started,Tasks.Active,Tasks.Latency Average", dest="counters")
         parser.add_argument("--worker-counter", help="The per-worker counters that should be monitored while benchmarking",
-                default="Sockets.LPVs.Task Time", dest="worker_counters")
+                default="Sockets.LPVs.Buffer Time", dest="worker_counters")
         parser.add_argument("--csv", help="Output the counter data as csv file", default=False, action="store_true",
                 dest="csv")
         parser.add_argument("--out", "-o", help="Redirect the script output to this file",
