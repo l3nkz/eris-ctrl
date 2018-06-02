@@ -167,14 +167,19 @@ class ErisWorker:
     Wrapper class for a worker thread of ERIS.
     """
 
-    def __init__(self, ectrl, cpuid, socketid):
+    def __init__(self, ectrl, cpuid, localid, socketid):
         self._ectrl = ectrl
         self._cpuid = cpuid
+        self._localid = localid
         self._socketid = socketid
 
     @property
     def cpuid(self):
         return self._cpuid
+
+    @property
+    def localid(self):
+        return self._localid
 
     @property
     def socketid(self):
@@ -253,9 +258,9 @@ class ErisWorker:
         """
         return [
                 ErisWorkerCounter(self._ectrl, "Task Time", "The time the worker spends scheduling queries.",
-                    ["Sockets", "LPVs"], [None, str(self._cpuid)]),
+                    ["Sockets", "LPVs"], [str(self._socketid), str(self._localid)]),
                 ErisWorkerCounter(self._ectrl, "Buffer Time", "The time the worker spends processing queries.",
-                    ["Sockets", "LPVs"], [None, str(self._cpuid)])
+                    ["Sockets", "LPVs"], [str(self._socketid), str(self._localid)])
                ]
 
 
@@ -438,7 +443,7 @@ class ErisCtrl:
         workers = []
         for socket in data:
             for worker in socket["lpvs"]:
-                workers.append(ErisWorker(self, worker["physicalId"], socket["physicalId"]))
+                workers.append(ErisWorker(self, worker["physicalId"], worker["localId"], socket["physicalId"]))
 
         return workers
 
