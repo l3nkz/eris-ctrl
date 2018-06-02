@@ -121,7 +121,7 @@ class ListWorkersMode(OperationMode):
             for w in workers:
                 status = w.status()
                 print("Worker {} (Socket: {}, CPU: {}) {}{}".format(
-                    w.cpuid, w.socketid, w.cpuid,
+                    w.cpuid, w.socketid, w.localid,
                     "enabled" if status.enabled else "disabled",
                     "(suspending)" if status.suspending else ""
                 ))
