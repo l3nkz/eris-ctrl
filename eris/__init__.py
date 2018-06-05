@@ -51,6 +51,121 @@ class ErisBenchmark:
         self._ectrl._post("/benchmarking/stop/{handle}".format(handle=self._handle), rmode=ErisCtrl.RequestMode.BOOL)
 
 
+class ErisManagedSession:
+    """
+    Wrapper class for a managed benchmarking session on ERIS.
+    """
+
+    class Benchmark:
+        def __init__(self, session, data):
+            self._session = session
+            self._update(data)
+
+        def _update(self, data):
+            self._id = data["id"]
+            self._name = data["name"]
+            self._ready = bool(data["ready"])
+            self._active = bool(data["active"])
+            self._state = data["state"]
+
+        @property
+        def id(self):
+            return self._id
+
+        @property
+        def name(self):
+            return self._name
+
+        @property
+        def ready(self):
+            return self._ready
+
+        @property
+        def active(self, refresh=True):
+            if refresh:
+                self._session._update()
+
+            return self._active
+
+        @property
+        def state(self, refresh=True):
+            if refresh:
+                self._session._update()
+
+            return self._state
+
+        def activate(self):
+            return self._session._activate_benchmark(self._id)
+
+    class Profile:
+        def __init__(self, session, data):
+            self._session = session
+            self._update(data)
+
+        def _update(self, data):
+            self._id = data["id"]
+            self._name = data["name"]
+            self._active = bool(data["active"])
+
+        @property
+        def id(self):
+            return self._id
+
+        @property
+        def name(self):
+            return self._name
+
+        @property
+        def active(self, refresh=True):
+            if refresh:
+                self._session._update()
+
+            return self._active
+
+        def activate(self):
+            return self._session._activate_profile(self._id)
+
+    def __init__(self, ectrl, data):
+        self._ectrl = ectrl
+
+        self._name = data["name"]
+        self._benchmarks = {}
+        for entry in data["benchmarks"]:
+            self._benchmarks[entry["id"]] = ErisManagedSession.Benchmark(self, entry)
+
+        self._profiles = {}
+        for entry in data["profiles"]:
+            self._profiles[entry["id"]] = ErisManagedSession.Profile(self, entry)
+
+    def _update(self):
+        data = self._ectrl._get("/benchmarking/managedsession/{}".format(self._name))
+        for entry in data["benchmarks"]:
+            self._benchmarks[entry["id"]]._update(entry)
+
+        for entry in data["profiles"]:
+            self._profiles[entry["id"]]._update(entry)
+
+    def _activate_benchmark(self, bench_id):
+        return self._ectrl._post("/benchmarking/setbenchmark/{}/{}".format(self._name, bench_id),
+                rmode = ErisCtrl.RequestMode.BOOL)
+
+    def _activate_profile(self, profile_id):
+        return self._ectrl._post("/benchmarking/setprofile/{}/{}".format(self._name, profile_id),
+                rmode = ErisCtrl.RequestMode.BOOL)
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def benchmarks(self):
+        return self._benchmarks
+
+    @property
+    def profiles(self):
+        return self._profiles
+
+
 class ErisCounterValue:
     def __init__(self, value, reltime, start_time):
         self._value = value
@@ -429,6 +544,31 @@ class ErisCtrl:
 
         return ErisBenchmark(self, data["handle"])
 
+    def sessions(self):
+        """
+        Get the list of all available managed benchmarking sessions.
+
+        @returns:       The names of all managed benchmarking sessions.
+        @rtype:         list(str)
+        """
+        data = self._get("/benchmarking/managedsessionlist")
+
+        sessions = []
+        for i in data["managedBenchmarks"]:
+            sessions.append(i["name"])
+
+        return sessions
+
+    def session(self, name):
+        """
+        Get the one special managed benchmarking session instance.
+
+        @retrun:        A handle to the managed benchmarking session.
+        @rtype:         ErisManagedSession
+        """
+        data = self._get("/benchmarking/managedsession/{}".format(name))
+
+        return ErisManagedSession(self, data)
 
     # Functions for the worker thread interface of ERIS.
     def workers(self):
