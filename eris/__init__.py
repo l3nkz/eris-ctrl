@@ -143,11 +143,11 @@ class ErisManagedSession:
             self._profiles[entry["id"]]._update(entry)
 
     def _activate_benchmark(self, bench_id):
-        return self._ectrl._post("/benchmarking/setbenchmark/{}/{}".format(self._name, bench_id),
+        return self._ectrl._post("/benchmarking/setbenchmark/{}/{}".format(self._id, bench_id),
                 rmode = ErisCtrl.RequestMode.BOOL)
 
     def _activate_profile(self, profile_id):
-        return self._ectrl._post("/benchmarking/setprofile/{}/{}".format(self._name, profile_id),
+        return self._ectrl._post("/benchmarking/setprofile/{}/{}".format(self._id, profile_id),
                 rmode = ErisCtrl.RequestMode.BOOL)
 
     @property
