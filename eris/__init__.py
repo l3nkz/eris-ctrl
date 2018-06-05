@@ -80,14 +80,12 @@ class ErisManagedSession:
         def ready(self):
             return self._ready
 
-        @property
         def active(self, refresh=True):
             if refresh:
                 self._session._update()
 
             return self._active
 
-        @property
         def state(self, refresh=True):
             if refresh:
                 self._session._update()
@@ -115,7 +113,6 @@ class ErisManagedSession:
         def name(self):
             return self._name
 
-        @property
         def active(self, refresh=True):
             if refresh:
                 self._session._update()
