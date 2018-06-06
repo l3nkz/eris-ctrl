@@ -158,9 +158,23 @@ class ErisManagedSession:
     def benchmarks(self):
         return self._benchmarks
 
+    def benchmark(self, name):
+        for _, b in self._benchmarks.items():
+            if b.name == name:
+                return b
+
+        return None
+
     @property
     def profiles(self):
         return self._profiles
+
+    def profile(self, name):
+        for _, p in self._profiles.items():
+            if p.name == name:
+                return p
+
+        return None
 
 
 class ErisCounterValue:

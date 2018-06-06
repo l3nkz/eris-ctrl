@@ -346,6 +346,304 @@ class RunMode(OperationMode):
                 self._outfile.close()
 
 
+class ListSessionsMode(OperationMode):
+    @staticmethod
+    def add_arguments(parser):
+        OperationMode.add_arguments(parser)
+
+        parser.set_defaults(create=ListSessionsMode.create)
+
+    @staticmethod
+    def create():
+        return ListSessionsMode()
+
+    def parse_args(self, args):
+        super().parse_args(args)
+
+    def run(self):
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            print("Sessions:")
+            for s in ectrl.sessions():
+                print(s)
+
+
+class ListSessionBenchsMode(OperationMode):
+    @staticmethod
+    def add_arguments(parser):
+        OperationMode.add_arguments(parser)
+
+        parser.set_defaults(create=ListSessionBenchsMode.create)
+
+        parser.add_argument("session", help="The session for which the available benchmark should be listed")
+
+    @staticmethod
+    def create():
+        return ListSessionBenchsMode()
+
+    def parse_args(self, args):
+        super().parse_args(args)
+
+        self._session = args.session
+
+    def run(self):
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            if self._session not in ectrl.sessions():
+                print("{} is not a valid session".format(self._session))
+                sys.exit(1)
+
+            session = ectrl.session(self._session)
+            print("Benchmarks:")
+            for i, b in session.benchmarks.items():
+                print("{}: {}".format(i, b.name))
+
+
+class ListSessionProfilesMode(OperationMode):
+    @staticmethod
+    def add_arguments(parser):
+        OperationMode.add_arguments(parser)
+
+        parser.set_defaults(create=ListSessionProfilesMode.create)
+
+        parser.add_argument("session", help="The session for which the available profiles should be listed")
+
+    @staticmethod
+    def create():
+        return ListSessionProfilesMode()
+
+    def parse_args(self, args):
+        super().parse_args(args)
+
+        self._session = args.session
+
+    def run(self):
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            if self._session not in ectrl.sessions():
+                print("{} is not a valid session".format(self._session))
+                sys.exit(1)
+
+            session = ectrl.session(self._session)
+            print("Profiles:")
+            for i, p in session.profiles.items():
+                print("{}: {}".format(i, p.name))
+
+
+class ManagedMode(OperationMode):
+    @staticmethod
+    def add_arguments(parser):
+        OperationMode.add_arguments(parser)
+
+        parser.set_defaults(create=ManagedMode.create)
+
+        parser.add_argument("session", help="The name of the managed session that should be used")
+        parser.add_argument("bench", help="The id of the benchmark that should be started")
+        parser.add_argument("--profile", help="The id of the profile that should be used", type=str,
+                default="low", dest="profile")
+        parser.add_argument("--duration", help="The benchmarking duration in seconds", type=int,
+                default=20, dest="duration")
+        parser.add_argument("--worker", help="The IDs of the workers that should be enabled (-1 == all)", type=str,
+                default="-1", dest="workers")
+        parser.add_argument("--frequency", help="The freq in MHz at which the worker should operate", type=int,
+                default="-1", dest="frequency")
+        parser.add_argument("--counter", help="The global counters that should be monitored while benchmarking",
+                default="Tasks.Finished,Tasks.Started,Tasks.Active,Tasks.Latency Average", dest="counters")
+        parser.add_argument("--worker-counter", help="The per-worker counters that should be monitored while benchmarking",
+                default="Sockets.LPVs.Buffer Time", dest="worker_counters")
+        parser.add_argument("--csv", help="Output the counter data as csv file", default=False, action="store_true",
+                dest="csv")
+        parser.add_argument("--out", "-o", help="Redirect the script output to this file",
+                default=None, dest="outfile")
+        parser.add_argument("--wait", help="Wait for the benchmark to be fully started before measuring the counters",
+                default=False, action="store_true", dest="wait_for_benchmark")
+
+    @staticmethod
+    def create():
+        return ManagedMode()
+
+    def __init__(self):
+        self._outfile = None
+
+    def parse_workers(self, workers):
+        items = [i.strip() for i in workers.split(",")]
+        result = []
+
+        for i in items:
+            if i == "-1":
+                result.append(-1)
+            elif "-" in i:
+                sub_items = i.split("-")
+                if len(sub_items) != 2:
+                    print("Incorrect worker definition: {}".format(i))
+                    sys.exit(1)
+
+                first, second = [s.strip() for s in sub_items]
+
+                for s in range(int(first), int(second)+1):
+                    result.append(s)
+            else:
+                result.append(int(i))
+
+        if -1 in result and len(result) != 1:
+            print("Conflicting worker definition! -1 can not be combined with anything")
+            sys.exit(1)
+
+        return list(set(result))
+
+    def parse_counters(self, counters):
+        return [i.strip() for i in counters.split(",")]
+
+    def parse_args(self, args):
+        super().parse_args(args)
+
+        self._session = args.session
+        self._bench = args.bench
+        self._profile = args.profile
+        self._duration = args.duration
+        self._workers = self.parse_workers(args.workers)
+        self._frequency = args.frequency
+        self._counters = self.parse_counters(args.counters)
+        self._worker_counters = self.parse_counters(args.worker_counters)
+        self._csv = args.csv
+        self._outfilepath = args.outfile
+        self._wait_for_benchmark = args.wait_for_benchmark
+
+    def setup_workers(self, ectrl):
+        workers = ectrl.workers()
+
+        # We have to set the frequency on all workers otherwise it will not have any effect
+        if self._frequency != -1:
+            for w in workers:
+                if not w.frequency(self._frequency * 1000):
+                    print("Failed to set worker {} to frequency {} MHz".format(w.cpuid, self._frequency))
+
+        # -1 is special, we have to enable all workers
+        if -1 in self._workers:
+            for w in workers:
+                w.enable()
+
+            return
+
+        # Otherwise enable those that are defined and disable all the others
+        for w in workers:
+            if w.cpuid in self._workers:
+                w.enable()
+            else:
+                w.disable()
+
+    def setup_counters(self, ectrl):
+        ctrs = []
+
+        for ctr in ectrl.counters():
+            if ctr.dist_name in self._counters:
+                ctrs.append(ctr.monitor())
+
+        for w in ectrl.workers():
+            for ctr in w.counters():
+                if ctr.ctr_name in self._worker_counters:
+                    ctrs.append(ctr.monitor())
+
+        return ctrs
+
+    def out(self, text):
+        if self._outfile is not None:
+            self._outfile.write(text+"\n")
+        else:
+            print(text)
+
+    def run(self):
+        with ErisCtrl(self._url, self._port, self._user, self._passwd) as ectrl:
+            if self._session not in ectrl.sessions():
+                print("{} is not a valid session".format(self._session))
+                sys.exit(1)
+
+            # Enable/Disable the ERIS workers
+            self.setup_workers(ectrl)
+
+            monitored_ctrs = self.setup_counters(ectrl)
+
+            # Get the session and start the benchmark with the profile
+            session = ectrl.session(self._session)
+            profile = session.profiles[self._profile]
+            bench = session.benchmarks[self._bench]
+
+            if profile is None:
+                print("{} is not a valid profile".format(self._profile))
+                sys.exit(1)
+            if bench is None:
+                print("{} is not a valid benchmark".format(self._bench))
+
+            try:
+                # Start the benchmark and the profile
+                bench.activate()
+                profile.activate()
+
+                # Wait until the benchmark is running (that can take some time)
+                while not bench.active():
+                    time.sleep(1)
+
+                if self._wait_for_benchmark:
+                    # Wait another few seconds to let the database get up-to-speed.
+                    # If we don't do this we might get strange counter values.
+                    time.sleep(2)
+
+                # Clear the counters. We don't want to measure the setup phase!
+                ectrl._pull_monitoring_data()
+                for ctr in monitored_ctrs:
+                    ctr.clear(False)
+
+                # Now that the benchmark is running, wait the specified duration
+                time.sleep(self._duration)
+
+                # Get the counter values before we stop the benchmark!
+                ectrl._pull_monitoring_data()
+            except KeyboardInterrupt:
+                # Catch Ctrl-C and similar key presses.
+                pass
+
+            # Open the output file if necessary
+            if self._outfilepath is not None:
+                try:
+                    self._outfile = open(self._outfilepath, mode="a")
+                except IOError:
+                    print("Failed to open output file {}".format(self._outfilepath))
+                    self._outfile = None
+
+            # Print the values of the counters
+            if self._csv:
+                self.out("counter;ts;value")
+            else:
+                self.out("counter;mean;median,stddev;perc_stddev;max;min;total")
+
+            for ctr in monitored_ctrs:
+                if self._csv:
+                    values = []
+                    for v in ctr.values(False):
+                        values.append(v.value)
+
+                        self.out("{};{};{}".format(ctr.counter.dist_name, v.reltime, v.value))
+                else:
+                    values = []
+                    for v in ctr.values(False):
+                        values.append(v.value)
+
+                    if len(values) > 0:
+                        mean = statistics.mean(values)
+                        median = statistics.median_low(values)
+                        stddev = statistics.stdev(values)
+                        perc_stddev = (stddev*100)/mean if mean != 0 else 0
+                        minimum = min(values)
+                        maximum = max(values)
+                        total = sum(values)
+                    else:
+                        mean = median = stddev = perc_stddev = minimum = maximum = total = 0
+
+                    self.out("{};{};{};{};{};{};{};{}".format(
+                        ctr.counter.dist_name, mean, median, stddev, perc_stddev, minimum, maximum, total
+                    ))
+
+            if self._outfile is not None:
+                self._outfile.close()
+
+
 if __name__ == "__main__":
     parser = ArgumentParser("eris-bench")
 
@@ -358,6 +656,10 @@ if __name__ == "__main__":
     ListCountersMode.add_arguments(commands.add_parser("counters", help="List all available monitorable counters"))
     ListWorkersMode.add_arguments(commands.add_parser("workers", help="List all available ERIS workers"))
     RunMode.add_arguments(commands.add_parser("run", help="Run a benchmark on ERIS"))
+    ListSessionsMode.add_arguments(commands.add_parser("sessions", help="List all available managed sessions"))
+    ListSessionBenchsMode.add_arguments(commands.add_parser("session_benchs", help="List all available benchmarks for a given session"))
+    ListSessionProfilesMode.add_arguments(commands.add_parser("session_profiles", help="List all available profiles for a managed session"))
+    ManagedMode.add_arguments(commands.add_parser("managed_run", help="Run a benchmark in a managed session on ERIS"))
 
     parsed_args = parser.parse_args()
 
