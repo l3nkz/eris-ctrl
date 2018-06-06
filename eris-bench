@@ -265,9 +265,6 @@ class RunMode(OperationMode):
                 print("{} is not a valid benchmark name.".format(self._bench))
                 sys.exit(1)
 
-            # Enable/Disable the ERIS workers
-            self.setup_workers(ectrl)
-
             monitored_ctrs = self.setup_counters(ectrl)
 
             # Start the benchmark
@@ -278,6 +275,9 @@ class RunMode(OperationMode):
                 # Wait until the benchmark is running (that can take some time)
                 while bench.status() != "Loaded":
                     time.sleep(1)
+
+                # Enable/Disable the ERIS workers now
+                self.setup_workers(ectrl)
 
                 if self._wait_for_benchmark:
                     # Wait another few seconds to let the database get up-to-speed.
@@ -555,9 +555,6 @@ class ManagedMode(OperationMode):
                 print("{} is not a valid session".format(self._session))
                 sys.exit(1)
 
-            # Enable/Disable the ERIS workers
-            self.setup_workers(ectrl)
-
             monitored_ctrs = self.setup_counters(ectrl)
 
             # Get the session and start the benchmark with the profile
@@ -579,6 +576,9 @@ class ManagedMode(OperationMode):
                 # Wait until the benchmark is running (that can take some time)
                 while not bench.active():
                     time.sleep(1)
+
+                # Enable/Disable the ERIS workers now
+                self.setup_workers(ectrl)
 
                 if self._wait_for_benchmark:
                     # Wait another few seconds to let the database get up-to-speed.
