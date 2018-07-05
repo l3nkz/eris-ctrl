@@ -403,6 +403,8 @@ class ErisCtrl:
         BOOL = 3
 
     def __init__(self, url, port, user, passwd):
+        self._pid = None
+
         self._user = user
         self._passwd = passwd
 
@@ -716,3 +718,16 @@ class ErisCtrl:
                 rmode=ErisCtrl.RequestMode.CODE)
 
         return ecl_code == 200 and adapt_code == 200
+
+    def pid(self):
+        """
+        Get the PID of the connected ERIS instance
+
+        @returns:       The PID of the connected ERIS instance.
+        @rtype:         int
+        """
+        if self._pid is None:
+            data = self._get("/osctrl/pid", rmode=ErisCtrl.RequestMode.JSON)
+            self._pid = int(data["pid"])
+
+        return self._pid
